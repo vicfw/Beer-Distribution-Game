@@ -1,0 +1,6 @@
+dist
+coverage
+pnpm-lock.yaml
+fixtures
+docs/TASK.md
+docs/EXAMPLE.md
