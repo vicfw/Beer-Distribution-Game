@@ -76,6 +76,7 @@ export type LobbyResponse = {
 
 export type CreateGameResponse = {
   code: string;
+  gameId: string;
 };
 
 export type JoinGameResponse = {

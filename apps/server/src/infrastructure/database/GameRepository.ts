@@ -7,6 +7,7 @@ import { DomainError } from '../../domain/game/errors.js';
 import type { GameRules } from '../../domain/game/gameRules.js';
 import { cloneState, type GameState, type RoundRecord } from '../../domain/game/GameState.js';
 import type { AppDatabase } from './client.js';
+import { migrationsApplied } from './migrations.js';
 import { parseRules, serializeRules } from './rulesCodec.js';
 import { games, orders, players, roundResults, rounds } from './schema.js';
 import { translateSqliteError } from './sqliteErrors.js';
@@ -70,6 +71,11 @@ export class GameRepository {
     private readonly sqlite: SqliteDatabase,
     private readonly db: AppDatabase,
   ) {}
+
+  ready(): boolean {
+    const row = this.sqlite.prepare('SELECT 1 AS ok').get() as { ok: number } | undefined;
+    return row?.ok === 1 && migrationsApplied(this.sqlite);
+  }
 
   create(input: { id: string; code: string; rules: GameRules; now: string }): GameRecord {
     const state = createGame(input.rules);

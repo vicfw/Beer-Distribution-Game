@@ -2,6 +2,7 @@
   "name": "beer-game",
   "version": "0.0.0",
   "private": true,
+  "type": "module",
   "description": "Take-home task: a small multiplayer supply-chain game. The script names below are the ones reviewers run.",
   "packageManager": "pnpm@10.24.0",
   "engines": {
