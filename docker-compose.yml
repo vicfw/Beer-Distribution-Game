@@ -1,0 +1,23 @@
+services:
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3001
+      DATABASE_PATH: /data/beer-game.sqlite
+    volumes:
+      - sqlite-data:/data
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    ports:
+      - "8080:80"
+    depends_on:
+      - server
+
+volumes:
+  sqlite-data:

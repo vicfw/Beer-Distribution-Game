@@ -1,0 +1,20 @@
+FROM node:24-bookworm-slim
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends python3 make g++ \
+  && rm -rf /var/lib/apt/lists/*
+
+RUN corepack enable && corepack prepare pnpm@10.24.0 --activate
+
+WORKDIR /app
+COPY . .
+RUN pnpm install --frozen-lockfile
+RUN pnpm --filter @beer-game/server build
+
+ENV NODE_ENV=production
+ENV HOST=0.0.0.0
+ENV PORT=3001
+ENV DATABASE_PATH=/data/beer-game.sqlite
+
+EXPOSE 3001
+CMD ["node", "apps/server/dist/index.js"]
