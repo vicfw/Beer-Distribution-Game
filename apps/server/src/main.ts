@@ -44,6 +44,8 @@ export async function start(config: AppConfig = loadConfig()): Promise<RunningSe
   const io: GameServer = new Server(httpServer, {
     cors: { origin: true, credentials: true },
     maxHttpBufferSize: 100_000,
+    pingInterval: 15_000,
+    pingTimeout: 20_000,
   });
   holder.io = io;
   attachGameSockets(io, deps, presence);

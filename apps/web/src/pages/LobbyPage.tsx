@@ -1,44 +1,50 @@
 import { ROLE_LABEL, ROLES, type GameStatus, type Role } from '@beer-game/shared';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { AppLink } from '../components/AppLink';
 import { HudFrame, Shell } from '../components/HudFrame';
 import { ConnectionBanner, ReplacedOverlay } from '../features/session/ConnectionBanner';
 import { useGameSession } from '../features/session/useGameSession';
-import { claimSeat, fetchLobby } from '../lib/api';
+import { claimSeat } from '../lib/api';
 import { formatCost } from '../lib/money';
 import { markLaunched, readSeat, wasLaunched, writeSeat } from '../lib/storage';
 
 export function LobbyPage() {
   const { code = '' } = useParams();
   const navigate = useNavigate();
+  const [seatCode, setSeatCode] = useState(code);
   const [seat, setSeat] = useState(() => readSeat(code));
   const [error, setError] = useState<string | null>(null);
   const [launching, setLaunching] = useState(false);
   const [joinedStatus, setJoinedStatus] = useState<GameStatus | null>(null);
   const holdingSeat = useRef(Boolean(readSeat(code)));
-  const session = useGameSession(code, seat ? 'player' : 'off');
-  const lobby = useQuery({
-    queryKey: ['lobby', code],
-    queryFn: () => fetchLobby(code),
-    retry: false,
-    refetchInterval: session.link === 'live' ? false : 2000,
-  });
-
-  const status = session.snapshot?.status ?? joinedStatus ?? lobby.data?.status;
-  const seats = session.snapshot?.seats ?? lobby.data?.seats ?? [];
-  const rules = session.snapshot?.rules ?? lobby.data?.rules;
-  const roundCount = rules?.roundCount ?? 20;
+  if (seatCode !== code) {
+    const nextSeat = readSeat(code);
+    setSeatCode(code);
+    setSeat(nextSeat);
+    setJoinedStatus(null);
+    setError(null);
+    setLaunching(false);
+    holdingSeat.current = Boolean(nextSeat);
+  }
+  const session = useGameSession(code, seat ? 'player' : 'lobby');
+  const board = session.snapshot ?? session.presence;
+  const status = board?.status ?? joinedStatus;
+  const seats = board?.seats ?? [];
+  const rules = board?.rules;
 
   const join = useMutation({
     mutationFn: (role: Role) => claimSeat(code, role),
     onSuccess: (result) => {
-      writeSeat(code, { playerId: result.playerId, role: result.role, seatToken: result.seatToken });
+      writeSeat(code, {
+        playerId: result.playerId,
+        role: result.role,
+        seatToken: result.seatToken,
+      });
       setSeat(readSeat(code));
       setJoinedStatus(result.game.status);
       setError(null);
-      void lobby.refetch();
     },
     onError: (cause: Error) => {
       holdingSeat.current = false;
@@ -81,11 +87,12 @@ export function LobbyPage() {
           COPY LINK
         </button>
       </div>
-      {lobby.isError ? <p className="mt-6 text-alert">No simulation under that code.</p> : null}
+      {session.missing ? <p className="mt-6 text-alert">No simulation under that code.</p> : null}
       {error ? <p className="mt-4 text-sm text-alert">{error}</p> : null}
       {rules ? (
         <p className="mt-4 font-mono text-[11px] tracking-[0.14em] text-muted">
-          {roundCount} ROUNDS · HOLD {formatCost(rules.holdingCostCents)} · BACKLOG {formatCost(rules.backlogCostCents)} · DELAY {rules.shippingDelay}
+          {rules.roundCount} ROUNDS · HOLD {formatCost(rules.holdingCostCents)} · BACKLOG{' '}
+          {formatCost(rules.backlogCostCents)} · DELAY {rules.shippingDelay}
         </p>
       ) : null}
 
@@ -94,15 +101,31 @@ export function LobbyPage() {
           const station = seats.find((candidate) => candidate.role === role);
           const mine = seat?.role === role;
           const heldHere = Boolean(seat);
-          const claimable = !heldHere && !station?.taken && !join.isPending && status !== 'playing' && status !== 'finished';
+          const claimable =
+            board !== null &&
+            !session.missing &&
+            !heldHere &&
+            !station?.taken &&
+            !join.isPending &&
+            status !== 'playing' &&
+            status !== 'finished';
           return (
-            <div key={role} className={`flex items-center justify-between border px-4 py-4 ${mine ? 'border-cyan' : 'border-line'}`}>
+            <div
+              key={role}
+              className={`flex items-center justify-between border px-4 py-4 ${mine ? 'border-cyan' : 'border-line'}`}
+            >
               <div>
-                <p className="font-mono text-xs tracking-[0.2em]">{ROLE_LABEL[role].toUpperCase()}</p>
-                <p className="mt-1 text-sm text-muted">{stationStatus(mine, Boolean(station?.taken), heldHere)}</p>
+                <p className="font-mono text-xs tracking-[0.2em]">
+                  {ROLE_LABEL[role].toUpperCase()}
+                </p>
+                <p className="mt-1 text-sm text-muted">
+                  {stationStatus(mine, Boolean(station?.taken), heldHere, board !== null)}
+                </p>
               </div>
               <div className="flex items-center gap-3">
-                <span className={`h-2 w-2 rounded-full ${station?.connected ? 'bg-lime' : 'bg-line'}`} />
+                <span
+                  className={`h-2 w-2 rounded-full ${station?.connected ? 'bg-lime' : 'bg-line'}`}
+                />
                 {mine ? (
                   <span className="font-mono text-[11px] tracking-[0.16em] text-cyan">SEATED</span>
                 ) : claimable ? (
@@ -150,7 +173,8 @@ export function LobbyPage() {
   );
 }
 
-function stationStatus(mine: boolean, taken: boolean, heldHere: boolean): string {
+function stationStatus(mine: boolean, taken: boolean, heldHere: boolean, known: boolean): string {
+  if (!known) return 'Checking';
   if (mine) return 'Your station';
   if (taken) return 'Manned';
   if (heldHere) return 'Claim from another tab';

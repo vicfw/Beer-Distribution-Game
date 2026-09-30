@@ -1,5 +1,5 @@
+import type { GameSnapshot, LobbyResponse } from './dto.js';
 import type { ErrorBody } from './errors.js';
-import type { GameSnapshot, SeatPublic } from './dto.js';
 import type { Role } from './roles.js';
 
 export type SubmitOrderPayload = {
@@ -17,12 +17,8 @@ export type SubmitOrderAck = {
   advanced: boolean;
 };
 
-export type PublicPresence = {
+export type PublicPresence = LobbyResponse & {
   version: number;
-  code: string;
-  status: GameSnapshot['status'];
-  round: number;
-  seats: SeatPublic[];
 };
 
 export interface ClientToServerEvents {
@@ -32,6 +28,7 @@ export interface ClientToServerEvents {
   ) => void;
   'game:leave': (ack: (result: Ack<{ left: boolean }>) => void) => void;
   'game:sync': (ack: (result: Ack<{ version: number }>) => void) => void;
+  'connection:ping': (ack: (result: Ack<{ alive: true }>) => void) => void;
 }
 
 export interface ServerToClientEvents {
@@ -62,6 +59,11 @@ export type SocketData =
     }
   | {
       kind: 'spectator';
+      gameId: string;
+      code: string;
+    }
+  | {
+      kind: 'lobby';
       gameId: string;
       code: string;
     };

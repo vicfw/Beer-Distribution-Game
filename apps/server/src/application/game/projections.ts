@@ -1,4 +1,12 @@
-import type { Debrief, LobbyResponse, PlayerSnapshot, PublicRules, SeatPublic, SpectatorSnapshot } from '@beer-game/shared';
+import type {
+  Debrief,
+  LobbyResponse,
+  PlayerSnapshot,
+  PublicPresence,
+  PublicRules,
+  SeatPublic,
+  SpectatorSnapshot,
+} from '@beer-game/shared';
 import { ROLES } from '@beer-game/shared';
 import { DomainError } from '../../domain/game/errors.js';
 import type { GameRules } from '../../domain/game/gameRules.js';
@@ -37,6 +45,13 @@ export function toLobby(game: GameRecord, connected: ReadonlySet<string>): Lobby
     roundCount: game.state.rules.roundCount,
     seats: toSeats(game, connected),
     rules: publicRules(game.state.rules),
+  };
+}
+
+export function toPublicPresence(game: GameRecord, connected: ReadonlySet<string>): PublicPresence {
+  return {
+    version: game.version,
+    ...toLobby(game, connected),
   };
 }
 
@@ -82,7 +97,10 @@ export function toPlayerSnapshot(
   };
 }
 
-export function toSpectatorSnapshot(game: GameRecord, connected: ReadonlySet<string>): SpectatorSnapshot {
+export function toSpectatorSnapshot(
+  game: GameRecord,
+  connected: ReadonlySet<string>,
+): SpectatorSnapshot {
   return {
     kind: 'spectator',
     version: game.version,

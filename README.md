@@ -29,6 +29,7 @@ A fifth tab can open **Observer** on the lobby once the game is underway. Observ
 ## Features
 
 - Four-role Beer Distribution Game, checked against the published 20-round fixture
+- Lobby membership over the socket, without polling who has joined
 - Server-authoritative rounds, with a per-player view and a separate observer view
 - Refresh, disconnect, and a second tab taking over the same seat
 - Idempotent order submission
@@ -80,7 +81,7 @@ Around that fold, the layers stay thin on purpose:
 - Use cases check who is asking and call the engine.
 - The repository writes the new orders and the round read-model in one SQLite transaction.
 - HTTP is for create, join, leave, and the debrief. Those are request/response.
-- Socket.IO is for the live board. Handlers validate a payload and call the same use case HTTP would call.
+- Socket.IO is for the lobby and the live board. Handlers validate a payload and call the same use case HTTP would call.
 
 A single Node process and one SQLite file are enough for four players. Adding Redis or a second service would not make the rules more correct.
 
@@ -107,15 +108,19 @@ The game starts when the fourth seat is claimed. There is no separate start butt
 
 ## Realtime communication
 
-Create and join are HTTP. They return a seat token once. Everything live is Socket.IO.
+Create and join are HTTP. They return a seat token once. Who is in the lobby, and the live board, are Socket.IO. The lobby page does not poll `GET /api/games/:code`. That route is still there for a one-shot read.
 
-A player connects with `{ gameCode, seatToken }`. An observer connects with `{ gameCode, spectator: true }`. The server hashes the token, loads the seat, and joins:
+A player connects with `{ gameCode, seatToken }`. An observer connects with `{ gameCode, spectator: true }`. A tab that has not claimed a seat connects with `{ gameCode, lobby: true }`. The server hashes a seat token when one is present, loads the seat, and joins:
 
-- `game:{id}` for public events (who is seated, who has locked an order, round started or finished)
+- `game:{id}` for public events, including `lobby:updated` (who is seated, the public rules, round started or finished)
 - `player:{id}` for that player's `game:state`
 - `game:{id}:spectators` for the observer snapshot
 
-`game:state` is the only payload the UI renders. It carries a `version`. The client drops a snapshot older than the one it already has. Other events (`round:completed`, `session:replaced`, disconnect) are status, not state.
+A lobby socket joins only `game:{id}`. On connect the server emits the current `lobby:updated`, and it emits that event again when someone claims or leaves a seat. The payload is the public lobby plus a `version`: code, status, round, `roundCount`, `rules`, and `seats`. The client keeps the newest version and drops an older one, and it does not offer a seat until that first payload arrives. A seated player still renders `game:state`. A missing code is `GAME_NOT_FOUND`; the client stops reconnecting and shows that no simulation exists.
+
+`game:state` carries a `version` too. The client drops a snapshot older than the one it already has. Other events (`round:completed`, `session:replaced`, disconnect) are status, not state.
+
+The server sends an Engine.IO ping every 15 seconds and waits 20 seconds for the pong. That is inside nginx's default 60 second proxy read timeout, so an idle socket stays open. The client also emits `connection:ping` every 20 seconds while it is connected. The server acks `{ ok: true, data: { alive: true } }` for lobby, player, and spectator sockets. If that ack does not return within 5 seconds, the client closes the transport and the existing reconnect loop runs.
 
 During a round the public events do not include quantities. A retailer's socket is not in the wholesaler's room, so it never receives the wholesaler's inventory or order. An integration test orders 17 as the wholesaler and asserts that number never appears on the retailer's socket.
 
@@ -127,7 +132,7 @@ The client sends `{ round, submissionId, quantity }`. The server decides whether
 
 The seat token is stored in `sessionStorage`, which is per tab and survives a reload. That is what makes four tabs four players.
 
-On every connect the server sends a full `game:state`. The UI can rebuild from that alone. If the same token connects again, the new socket wins and the old tab receives `session:replaced`. That tab can take control back, which kicks the other one.
+On every player or observer connect the server sends a full `game:state`. A lobby connect sends `lobby:updated`. The UI can rebuild from that alone. If the same token connects again, the new socket wins and the old tab receives `session:replaced`. That tab can take control back, which kicks the other one.
 
 A disconnect is presence only. The seat and any order already saved stay. Reconnect logs `PLAYER_RECONNECTED` only after this process has seen a disconnect, so the first join is not reported as a reconnect.
 
@@ -172,9 +177,9 @@ Rules JSON is a value object (costs in cents, delay, opening pipeline, demand). 
 - The engine replays `fixtures/everyone-orders-four.json` for every role, every round, and every field, plus the delay check from `docs/EXAMPLE.md`.
 - The repository test plays the classic game, reopens the file, and checks costs, a partial round, and that a finished round cannot be claimed again.
 - HTTP tests reject a body that contains `inventory`, seat four players, and read the debrief only after the game ends.
-- Socket tests cover a real round, a privacy check, refresh, a duplicate submission, a second tab, an observer who tries to order, a restart, and four orders arriving together.
+- Socket tests cover a real round, a privacy check, refresh, a duplicate submission, a second tab, an observer who tries to order, a restart, four orders arriving together, a lobby socket that sees a seat get claimed, and a `connection:ping` ack.
 
-The web tests cover cost formatting, stale snapshots, and the reconnect banner. They do not pretend to be the rules.
+The web tests cover cost formatting, stale snapshots, the reconnect banner, and the lobby rendering a seat change from `lobby:updated` without calling `GET /api/games/:code`. They do not pretend to be the rules.
 
 ## Observability
 
@@ -228,7 +233,7 @@ The job fails if any step fails.
 
 ## Technical trade-offs
 
-- **HTTP for join, sockets for play.** A seat token is easier to store and retry as a normal response than as a socket ack during a page load.
+- **HTTP for join, sockets for the lobby and for play.** A seat token is easier to store and retry as a normal response than as a socket ack during a page load. Before a seat is claimed, and after each claim, membership moves on `lobby:updated` instead of a repeating GET.
 - **Orders are the log, `round_results` is a projection.** Replay keeps one implementation of the rules. The table makes the debrief a query and makes a missed write obvious.
 - **Costs are integer cents.** A rate of 0.5 never becomes a binary float.
 - **In-memory presence.** Who is connected is not durable. Who is seated is. A restart clears the green lamps and the next connect restores them.

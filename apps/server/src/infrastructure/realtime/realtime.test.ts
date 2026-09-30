@@ -2,7 +2,16 @@ import { randomUUID } from 'node:crypto';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ROLES, type Ack, type ClientToServerEvents, type GameSnapshot, type PlayerSnapshot, type ServerToClientEvents, type SubmitOrderAck } from '@beer-game/shared';
+import {
+  ROLES,
+  type Ack,
+  type ClientToServerEvents,
+  type GameSnapshot,
+  type PlayerSnapshot,
+  type PublicPresence,
+  type ServerToClientEvents,
+  type SubmitOrderAck,
+} from '@beer-game/shared';
 import { io, type Socket } from 'socket.io-client';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { AppConfig } from '../../config.js';
@@ -33,7 +42,9 @@ describe('realtime game', () => {
 
     const players = seats.map((seat) => connectPlayer(port, code, seat.seatToken));
     const snapshots = await Promise.all(players.map((player) => player.ready));
-    expect(snapshots.every((snapshot) => snapshot.status === 'playing' && snapshot.round === 1)).toBe(true);
+    expect(
+      snapshots.every((snapshot) => snapshot.status === 'playing' && snapshot.round === 1),
+    ).toBe(true);
 
     const retailer = players[0];
     const wholesaler = players[1];
@@ -41,8 +52,14 @@ describe('realtime game', () => {
     const seen: unknown[] = [];
     retailer.socket.onAny((event, payload) => seen.push({ event, payload }));
 
-    const retailerState = waitForPlayer(retailer.socket, (snapshot) => snapshot.seats.some((seat) => seat.role === 'wholesaler' && seat.submitted));
-    const ack = await emitOrder(wholesaler.socket, { round: 1, submissionId: randomUUID(), quantity: 17 });
+    const retailerState = waitForPlayer(retailer.socket, (snapshot) =>
+      snapshot.seats.some((seat) => seat.role === 'wholesaler' && seat.submitted),
+    );
+    const ack = await emitOrder(wholesaler.socket, {
+      round: 1,
+      submissionId: randomUUID(),
+      quantity: 17,
+    });
     expect(ack.ok).toBe(true);
     await retailerState;
     expect(collectNumbers(seen)).not.toContain(17);
@@ -109,7 +126,11 @@ describe('realtime game', () => {
     const pending = players.map((player, index) => {
       const socket = player.socket;
       const next = waitForPlayer(socket, (snapshot) => snapshot.round === 2);
-      const order = emitOrder(socket, { round: 1, submissionId: randomUUID(), quantity: index + 1 });
+      const order = emitOrder(socket, {
+        round: 1,
+        submissionId: randomUUID(),
+        quantity: index + 1,
+      });
       return Promise.all([order, next]);
     });
     const results = await Promise.all(pending);
@@ -119,6 +140,26 @@ describe('realtime game', () => {
       expect(snapshot.history).toHaveLength(1);
     }
   }, 20_000);
+
+  it('pushes seat changes to an unseated lobby socket and acks a heartbeat', async () => {
+    running = await start(testConfig(tempFile()));
+    const code = await createGame(running.port);
+    const lobby = connectLobby(running.port, code);
+    const initial = await lobby.ready;
+    expect(initial.seats.every((seat) => !seat.taken)).toBe(true);
+    expect(initial.rules.roundCount).toBe(20);
+
+    const next = waitForLobby(lobby.socket, (presence) =>
+      presence.seats.some((seat) => seat.role === 'retailer' && seat.taken),
+    );
+    await claimSeat(running.port, code, 'retailer');
+    const updated = await next;
+    expect(updated.code).toBe(code);
+    expect(updated.rules.shippingDelay).toBe(2);
+
+    const ack = await lobby.socket.timeout(2000).emitWithAck('connection:ping');
+    expect(ack).toEqual({ ok: true, data: { alive: true } });
+  });
 });
 
 function testConfig(file: string): AppConfig {
@@ -165,6 +206,45 @@ function connectPlayer(port: number, code: string, seatToken: string) {
   return { socket, ready: firstPlayerSnapshot(socket) };
 }
 
+function connectLobby(port: number, code: string) {
+  const socket = io(`http://127.0.0.1:${port}`, {
+    auth: { gameCode: code, lobby: true },
+    forceNew: true,
+    reconnection: false,
+    transports: ['websocket'],
+  }) as Client;
+  openSockets.push(socket);
+  const ready = new Promise<PublicPresence>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('lobby timeout')), 4000);
+    socket.on('connect_error', (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    socket.on('lobby:updated', (presence) => {
+      clearTimeout(timer);
+      socket.off('lobby:updated');
+      resolve(presence);
+    });
+  });
+  return { socket, ready };
+}
+
+function waitForLobby(
+  socket: Client,
+  predicate: (presence: PublicPresence) => boolean,
+): Promise<PublicPresence> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('lobby update timeout')), 4000);
+    const onLobby = (presence: PublicPresence) => {
+      if (!predicate(presence)) return;
+      clearTimeout(timer);
+      socket.off('lobby:updated', onLobby);
+      resolve(presence);
+    };
+    socket.on('lobby:updated', onLobby);
+  });
+}
+
 function connectSpectator(port: number, code: string) {
   const socket = io(`http://127.0.0.1:${port}`, {
     auth: { gameCode: code, spectator: true },
@@ -205,7 +285,10 @@ function firstPlayerSnapshot(socket: Client): Promise<PlayerSnapshot> {
   });
 }
 
-function waitForPlayer(socket: Client, predicate: (snapshot: PlayerSnapshot) => boolean): Promise<PlayerSnapshot> {
+function waitForPlayer(
+  socket: Client,
+  predicate: (snapshot: PlayerSnapshot) => boolean,
+): Promise<PlayerSnapshot> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('snapshot timeout')), 4000);
     const onState = (snapshot: GameSnapshot) => {

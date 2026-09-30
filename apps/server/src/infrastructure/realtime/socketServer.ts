@@ -1,7 +1,11 @@
 import { gameCodeSchema, submitOrderSchema, type ErrorBody } from '@beer-game/shared';
 import { z } from 'zod';
 import { leaveGame } from '../../application/game/leaveGame.js';
-import { toPlayerSnapshot, toSpectatorSnapshot } from '../../application/game/projections.js';
+import {
+  toPlayerSnapshot,
+  toPublicPresence,
+  toSpectatorSnapshot,
+} from '../../application/game/projections.js';
 import { submitOrder } from '../../application/game/submitOrder.js';
 import type { AppDeps } from '../../application/game/deps.js';
 import { hashToken } from '../../application/ids.js';
@@ -16,6 +20,7 @@ const authSchema = z
     gameCode: z.string(),
     seatToken: z.string().min(20).max(200).optional(),
     spectator: z.boolean().optional(),
+    lobby: z.boolean().optional(),
   })
   .strict();
 
@@ -41,6 +46,11 @@ export function attachGameSockets(io: GameServer, deps: AppDeps, presence: Prese
       next();
       return;
     }
+    if (parsed.data.lobby && !parsed.data.seatToken) {
+      socket.data = { kind: 'lobby', gameId: game.id, code: game.code };
+      next();
+      return;
+    }
     if (!parsed.data.seatToken) {
       next(new Error('PLAYER_NOT_AUTHORIZED'));
       return;
@@ -62,11 +72,20 @@ export function attachGameSockets(io: GameServer, deps: AppDeps, presence: Prese
 
   io.on('connection', (socket) => {
     const data = socket.data;
-    if (data.kind !== 'player' && data.kind !== 'spectator') {
+    if (data.kind !== 'player' && data.kind !== 'spectator' && data.kind !== 'lobby') {
       socket.disconnect(true);
       return;
     }
     socket.join(gameRoom(data.gameId));
+    bindHeartbeat(socket);
+
+    if (data.kind === 'lobby') {
+      const game = deps.repo.findByCode(data.code);
+      if (game) {
+        socket.emit('lobby:updated', toPublicPresence(game, presence.connectedPlayerIds(game.id)));
+      }
+      return;
+    }
 
     if (data.kind === 'spectator') {
       socket.join(spectatorRoom(data.gameId));
@@ -77,7 +96,12 @@ export function attachGameSockets(io: GameServer, deps: AppDeps, presence: Prese
     }
 
     socket.join(playerRoom(data.playerId));
-    const { replaced, reconnected } = presence.connect(data.playerId, data.role, data.gameId, socket);
+    const { replaced, reconnected } = presence.connect(
+      data.playerId,
+      data.role,
+      data.gameId,
+      socket,
+    );
     for (const old of replaced) {
       old.emit('session:replaced', { code: data.code });
       old.disconnect(true);
@@ -87,7 +111,12 @@ export function attachGameSockets(io: GameServer, deps: AppDeps, presence: Prese
     if (reconnected) {
       io.to(gameRoom(data.gameId)).emit('player:reconnected', { role: data.role });
       deps.logger.info(
-        { event: 'PLAYER_RECONNECTED', gameId: data.gameId, playerId: data.playerId, role: data.role },
+        {
+          event: 'PLAYER_RECONNECTED',
+          gameId: data.gameId,
+          playerId: data.playerId,
+          role: data.role,
+        },
         'PLAYER_RECONNECTED',
       );
     }
@@ -98,7 +127,10 @@ export function attachGameSockets(io: GameServer, deps: AppDeps, presence: Prese
       if (!parsed.success) {
         ack({
           ok: false,
-          error: { code: 'INVALID_ORDER', message: parsed.error.issues[0]?.message ?? 'Invalid order' },
+          error: {
+            code: 'INVALID_ORDER',
+            message: parsed.error.issues[0]?.message ?? 'Invalid order',
+          },
         });
         return;
       }
@@ -135,7 +167,10 @@ export function attachGameSockets(io: GameServer, deps: AppDeps, presence: Prese
         ack({ ok: false, error: { code: 'GAME_NOT_FOUND', message: 'Game not found' } });
         return;
       }
-      socket.emit('game:state', toPlayerSnapshot(current, data.playerId, presence.connectedPlayerIds(current.id)));
+      socket.emit(
+        'game:state',
+        toPlayerSnapshot(current, data.playerId, presence.connectedPlayerIds(current.id)),
+      );
       ack({ ok: true, data: { version: current.version } });
     });
 
@@ -143,7 +178,12 @@ export function attachGameSockets(io: GameServer, deps: AppDeps, presence: Prese
       const { wentOffline } = presence.disconnect(data.playerId, socket.id);
       if (!wentOffline) return;
       deps.logger.info(
-        { event: 'PLAYER_DISCONNECTED', gameId: data.gameId, playerId: data.playerId, role: data.role },
+        {
+          event: 'PLAYER_DISCONNECTED',
+          gameId: data.gameId,
+          playerId: data.playerId,
+          role: data.role,
+        },
         'PLAYER_DISCONNECTED',
       );
       io.to(gameRoom(data.gameId)).emit('player:disconnected', { role: data.role });
@@ -153,18 +193,31 @@ export function attachGameSockets(io: GameServer, deps: AppDeps, presence: Prese
   });
 }
 
+function bindHeartbeat(socket: GameSocket): void {
+  socket.on('connection:ping', (ack) => {
+    if (typeof ack !== 'function') return;
+    ack({ ok: true, data: { alive: true } });
+  });
+}
+
 function bindSpectator(socket: GameSocket, deps: AppDeps, presence: Presence): void {
   const data = socket.data;
   if (data.kind !== 'spectator') return;
 
   socket.on('round:submit-order', (_payload, ack) => {
     if (typeof ack !== 'function') return;
-    ack({ ok: false, error: { code: 'SPECTATOR_NOT_ALLOWED', message: 'Spectators cannot place orders' } });
+    ack({
+      ok: false,
+      error: { code: 'SPECTATOR_NOT_ALLOWED', message: 'Spectators cannot place orders' },
+    });
   });
 
   socket.on('game:leave', (ack) => {
     if (typeof ack !== 'function') return;
-    ack({ ok: false, error: { code: 'SPECTATOR_NOT_ALLOWED', message: 'Spectators are not seated' } });
+    ack({
+      ok: false,
+      error: { code: 'SPECTATOR_NOT_ALLOWED', message: 'Spectators are not seated' },
+    });
   });
 
   socket.on('game:sync', (ack) => {
@@ -174,7 +227,10 @@ function bindSpectator(socket: GameSocket, deps: AppDeps, presence: Presence): v
       ack({ ok: false, error: { code: 'GAME_NOT_FOUND', message: 'Game not found' } });
       return;
     }
-    socket.emit('game:state', toSpectatorSnapshot(current, presence.connectedPlayerIds(current.id)));
+    socket.emit(
+      'game:state',
+      toSpectatorSnapshot(current, presence.connectedPlayerIds(current.id)),
+    );
     ack({ ok: true, data: { version: current.version } });
   });
 }

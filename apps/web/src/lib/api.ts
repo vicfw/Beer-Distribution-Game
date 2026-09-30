@@ -1,4 +1,10 @@
-import type { CreateGameInput, CreateGameResponse, Debrief, JoinGameResponse, LobbyResponse, Role } from '@beer-game/shared';
+import type {
+  CreateGameInput,
+  CreateGameResponse,
+  Debrief,
+  JoinGameResponse,
+  Role,
+} from '@beer-game/shared';
 
 export class ApiError extends Error {
   readonly code: string;
@@ -23,7 +29,11 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const text = await response.text();
   const body = parseBody(text);
   if (!response.ok) {
-    throw new ApiError(body?.error?.message ?? 'Request failed', body?.error?.code ?? 'INTERNAL', response.status);
+    throw new ApiError(
+      body?.error?.message ?? 'Request failed',
+      body?.error?.code ?? 'INTERNAL',
+      response.status,
+    );
   }
   if (text && !body) {
     throw new ApiError('The server returned an unreadable response', 'INTERNAL', response.status);
@@ -33,10 +43,6 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
 
 export function createGame(input: CreateGameInput): Promise<CreateGameResponse> {
   return api('/api/games', { method: 'POST', body: JSON.stringify(input) });
-}
-
-export function fetchLobby(code: string): Promise<LobbyResponse> {
-  return api(`/api/games/${code}`);
 }
 
 export function claimSeat(code: string, role: Role): Promise<JoinGameResponse> {
