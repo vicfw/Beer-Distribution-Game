@@ -18,7 +18,12 @@ export function createGame(rules: GameRules = classicRules()): GameState {
     round: 0,
     rules,
     seats: {},
-    roles: mapRoles({} as Record<Role, RoleState>, () => initialRole(rules)),
+    roles: {
+      retailer: initialRole(rules),
+      wholesaler: initialRole(rules),
+      distributor: initialRole(rules),
+      factory: initialRole(rules),
+    },
     pendingOrders: {},
     history: [],
   };
@@ -179,16 +184,17 @@ function applyMechanics(state: GameState, roundNumber: number): GameState {
       backlog: current.backlog,
       incomingOrder,
     });
+    const cost = roundCostCents(shippedState.inventory, shippedState.backlog, state.rules);
     return {
       inventory: shippedState.inventory,
       backlog: shippedState.backlog,
       pipeline: current.pipeline.slice(1),
       lastOrder: current.lastOrder,
-      totalCostCents: current.totalCostCents + roundCostCents(shippedState.inventory, shippedState.backlog, state.rules),
+      totalCostCents: current.totalCostCents + cost,
       shipmentArrived: arrived,
       incomingOrder,
       shipped: shippedState.shipped,
-      roundCostCents: roundCostCents(shippedState.inventory, shippedState.backlog, state.rules),
+      roundCostCents: cost,
     };
   });
 

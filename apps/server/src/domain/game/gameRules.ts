@@ -21,7 +21,7 @@ export type GameRules = {
 
 const CLASSIC_INITIAL_ORDER = 4;
 
-export function defaultDemand(roundCount: number): number[] {
+function defaultDemand(roundCount: number): number[] {
   return Array.from({ length: roundCount }, (_, index) => (index < 4 ? 4 : 8));
 }
 

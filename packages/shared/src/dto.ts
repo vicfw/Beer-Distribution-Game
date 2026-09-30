@@ -85,5 +85,3 @@ export type JoinGameResponse = {
   seatToken: string;
   game: LobbyResponse;
 };
-
-export type HistoryResponse = Debrief;

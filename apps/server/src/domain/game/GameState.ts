@@ -1,7 +1,5 @@
-import type { Role } from '@beer-game/shared';
+import type { GameStatus, Role } from '@beer-game/shared';
 import type { GameRules } from './gameRules.js';
-
-export type GameStatus = 'lobby' | 'playing' | 'finished';
 
 export type RoleState = {
   inventory: number;

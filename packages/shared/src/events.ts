@@ -17,12 +17,6 @@ export type SubmitOrderAck = {
   advanced: boolean;
 };
 
-export type SocketAuth = {
-  gameCode: string;
-  seatToken?: string;
-  spectator?: boolean;
-};
-
 export type PublicPresence = {
   version: number;
   code: string;

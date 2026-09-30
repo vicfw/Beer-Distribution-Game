@@ -5,7 +5,7 @@ import type { GameRules } from '../../domain/game/gameRules.js';
 import type { GameState } from '../../domain/game/GameState.js';
 import type { GameRecord } from '../../infrastructure/database/GameRepository.js';
 
-export function publicRules(rules: GameRules): PublicRules {
+function publicRules(rules: GameRules): PublicRules {
   return {
     holdingCostCents: rules.holdingCostCents,
     backlogCostCents: rules.backlogCostCents,
@@ -17,12 +17,16 @@ export function publicRules(rules: GameRules): PublicRules {
 }
 
 export function toSeats(game: GameRecord, connected: ReadonlySet<string>): SeatPublic[] {
-  return ROLES.map((role) => ({
-    role,
-    taken: game.players.some((player) => player.role === role),
-    connected: game.players.some((player) => player.role === role && connected.has(player.id)),
-    submitted: game.state.pendingOrders[role] !== undefined,
-  }));
+  const seated = new Map(game.players.map((player) => [player.role, player]));
+  return ROLES.map((role) => {
+    const player = seated.get(role);
+    return {
+      role,
+      taken: player !== undefined,
+      connected: player !== undefined && connected.has(player.id),
+      submitted: game.state.pendingOrders[role] !== undefined,
+    };
+  });
 }
 
 export function toLobby(game: GameRecord, connected: ReadonlySet<string>): LobbyResponse {
@@ -72,14 +76,7 @@ export function toPlayerSnapshot(
     seats: toSeats(game, connected),
     history: game.state.history.map((record) => ({
       round: record.round,
-      shipmentArrived: record.byRole[player.role].shipmentArrived,
-      incomingOrder: record.byRole[player.role].incomingOrder,
-      shipped: record.byRole[player.role].shipped,
-      inventory: record.byRole[player.role].inventory,
-      backlog: record.byRole[player.role].backlog,
-      roundCostCents: record.byRole[player.role].roundCostCents,
-      totalCostCents: record.byRole[player.role].totalCostCents,
-      orderPlaced: record.byRole[player.role].orderPlaced,
+      ...record.byRole[player.role],
     })),
     rules: publicRules(game.state.rules),
   };
@@ -99,7 +96,7 @@ export function toSpectatorSnapshot(game: GameRecord, connected: ReadonlySet<str
   };
 }
 
-export function toDebrief(state: GameState): Debrief {
+function toDebrief(state: GameState): Debrief {
   const costs = {
     retailer: state.roles.retailer.totalCostCents,
     wholesaler: state.roles.wholesaler.totalCostCents,

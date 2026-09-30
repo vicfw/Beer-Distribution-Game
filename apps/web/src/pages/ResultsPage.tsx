@@ -12,7 +12,7 @@ import { ROLE_COLOR } from '../lib/palette';
 
 export function ResultsPage() {
   const { code = '' } = useParams();
-  const [selected, setSelected] = useState<number | null>(20);
+  const [picked, setPicked] = useState<number | null>(null);
   const [view, setView] = useState<'inventory' | 'backlog' | 'cost'>('inventory');
   const history = useQuery({
     queryKey: ['history', code],
@@ -33,13 +33,21 @@ export function ResultsPage() {
       {history.isLoading ? <p className="mt-8 font-mono text-sm text-cyan">UNSEALING LOG</p> : null}
       {history.error instanceof ApiError && history.error.status === 409 ? (
         <HudFrame label="SEALED" className="mt-8">
-          <p>Costs and other stations stay hidden until round 20 is complete.</p>
+          <p>Costs and other stations stay hidden until the game ends.</p>
         </HudFrame>
       ) : null}
       {history.error && !(history.error instanceof ApiError && history.error.status === 409) ? (
         <p className="mt-8 text-alert">{history.error.message}</p>
       ) : null}
-      {history.data ? <DebriefBody debrief={history.data} selected={selected} onSelect={setSelected} view={view} onView={setView} /> : null}
+      {history.data ? (
+        <DebriefBody
+          debrief={history.data}
+          selected={picked ?? history.data.rounds.at(-1)?.round ?? null}
+          onSelect={setPicked}
+          view={view}
+          onView={setView}
+        />
+      ) : null}
     </Shell>
   );
 }

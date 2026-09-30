@@ -6,6 +6,8 @@ import { clearPending, readPending, readSeat, writePending, type PendingOrder } 
 
 type Client = Socket<ServerToClientEvents, ClientToServerEvents>;
 
+const QUEUED_NOTICE = 'Order queued. It will transmit when the link returns.';
+
 export type LinkStatus = 'connecting' | 'live' | 'reconnecting' | 'offline' | 'replaced' | 'closed';
 
 export function useGameSession(code: string, mode: 'player' | 'spectator' | 'off') {
@@ -26,26 +28,40 @@ export function useGameSession(code: string, mode: 'player' | 'spectator' | 'off
     });
   }, []);
 
+  const send = useCallback(
+    async (socket: Client, pending: PendingOrder) => {
+      if (inflight.current) return;
+      inflight.current = true;
+      setSending(true);
+      try {
+        const ack: Ack<SubmitOrderAck> = await socket.timeout(4000).emitWithAck('round:submit-order', pending);
+        if (!ack.ok && ack.error.code !== 'ALREADY_SUBMITTED') throw new Error(ack.error.message);
+        clearPending(code);
+        setNotice((current) => (current === QUEUED_NOTICE ? null : current));
+      } finally {
+        inflight.current = false;
+        setSending(false);
+      }
+    },
+    [code],
+  );
+
   const flush = useCallback(
     async (socket: Client, current: GameSnapshot) => {
-      if (inflight.current || current.kind !== 'player') return;
+      if (current.kind !== 'player') return;
       const pending = readPending(code);
       if (!pending) return;
       if (current.station?.submitted || current.round !== pending.round || current.status !== 'playing') {
         clearPending(code);
         return;
       }
-      inflight.current = true;
       try {
-        const ack = await socket.timeout(4000).emitWithAck('round:submit-order', pending);
-        if (ack.ok || (!ack.ok && ack.error.code === 'ALREADY_SUBMITTED')) clearPending(code);
-      } catch {
-        setNotice('Order is still queued. It will transmit when the link returns.');
-      } finally {
-        inflight.current = false;
+        await send(socket, pending);
+      } catch (error) {
+        setNotice(error instanceof Error ? error.message : 'Order is still queued. It will transmit when the link returns.');
       }
     },
-    [code],
+    [code, send],
   );
 
   const connect = useCallback(() => {
@@ -62,32 +78,46 @@ export function useGameSession(code: string, mode: 'player' | 'spectator' | 'off
       transports: ['websocket', 'polling'],
     });
     socketRef.current = socket;
+    const isCurrent = () => socketRef.current === socket;
     setLink(navigator.onLine ? 'connecting' : 'offline');
 
     socket.on('connect', () => {
+      if (!isCurrent()) return;
       setLink('live');
       setReplaced(false);
       const current = snapshotRef.current;
       if (current) void flush(socket, current);
     });
     socket.on('disconnect', (reason) => {
-      if (reason === 'io client disconnect') return;
+      if (!isCurrent() || reason === 'io client disconnect') return;
       setLink(navigator.onLine ? 'reconnecting' : 'offline');
     });
-    socket.io.on('reconnect_attempt', () => setLink('reconnecting'));
-    socket.on('connect_error', () => setLink(navigator.onLine ? 'reconnecting' : 'offline'));
+    socket.io.on('reconnect_attempt', () => {
+      if (isCurrent()) setLink('reconnecting');
+    });
+    socket.on('connect_error', () => {
+      if (isCurrent()) setLink(navigator.onLine ? 'reconnecting' : 'offline');
+    });
     socket.on('game:state', (next) => {
+      if (!isCurrent()) return;
       apply(next);
       void flush(socket, next);
     });
     socket.on('session:replaced', () => {
+      if (!isCurrent()) return;
       setReplaced(true);
       setLink('replaced');
       socket.disconnect();
     });
-    socket.on('game:error', (error) => setNotice(error.message));
-    socket.on('round:completed', ({ round }) => setNotice(`Round ${String(round).padStart(2, '0')} locked`));
-    socket.on('game:finished', () => setNotice('Simulation complete. Open the debrief.'));
+    socket.on('game:error', (error) => {
+      if (isCurrent()) setNotice(error.message);
+    });
+    socket.on('round:completed', ({ round }) => {
+      if (isCurrent()) setNotice(`Round ${String(round).padStart(2, '0')} locked`);
+    });
+    socket.on('game:finished', () => {
+      if (isCurrent()) setNotice('Simulation complete. Open the debrief.');
+    });
   }, [apply, code, flush, mode]);
 
   useEffect(() => {
@@ -117,6 +147,7 @@ export function useGameSession(code: string, mode: 'player' | 'spectator' | 'off
       if (!current || current.kind !== 'player' || current.status !== 'playing') {
         throw new Error('The round is not accepting orders');
       }
+      if (inflight.current) return;
       const existing = readPending(code);
       const pending: PendingOrder =
         existing && existing.round === current.round
@@ -125,25 +156,12 @@ export function useGameSession(code: string, mode: 'player' | 'spectator' | 'off
       writePending(code, pending);
       const socket = socketRef.current;
       if (!socket?.connected) {
-        setNotice('Order queued. It will transmit when the link returns.');
+        setNotice(QUEUED_NOTICE);
         return;
       }
-      setSending(true);
-      try {
-        const ack: Ack<SubmitOrderAck> = await socket.timeout(4000).emitWithAck('round:submit-order', pending);
-        if (!ack.ok) {
-          if (ack.error.code === 'ALREADY_SUBMITTED') {
-            clearPending(code);
-            return;
-          }
-          throw new Error(ack.error.message);
-        }
-        clearPending(code);
-      } finally {
-        setSending(false);
-      }
+      await send(socket, pending);
     },
-    [code],
+    [code, send],
   );
 
   const takeControl = useCallback(() => {
@@ -154,5 +172,5 @@ export function useGameSession(code: string, mode: 'player' | 'spectator' | 'off
 
   const player: PlayerSnapshot | null = snapshot?.kind === 'player' ? snapshot : null;
 
-  return { snapshot, player, link, notice, replaced, sending, submit, takeControl, clearNotice: () => setNotice(null) };
+  return { snapshot, player, link, notice, replaced, sending, submit, takeControl };
 }

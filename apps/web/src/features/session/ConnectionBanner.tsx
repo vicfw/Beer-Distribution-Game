@@ -4,7 +4,6 @@ const COPY: Partial<Record<LinkStatus, string>> = {
   connecting: 'Establishing uplink…',
   reconnecting: 'Link lost. Reconnecting. Your station stays on screen.',
   offline: 'Network unavailable. A queued order will transmit when the link returns.',
-  replaced: 'This seat was opened in another tab.',
 };
 
 export function ConnectionBanner({ link, onRetry }: { link: LinkStatus; onRetry?: () => void }) {
@@ -16,7 +15,7 @@ export function ConnectionBanner({ link, onRetry }: { link: LinkStatus; onRetry?
       className="flex flex-wrap items-center justify-between gap-3 border border-amber/40 bg-amber/10 px-4 py-2 font-mono text-xs tracking-wide text-amber"
     >
       <span>{message}</span>
-      {onRetry && link !== 'replaced' ? (
+      {onRetry ? (
         <button type="button" className="border border-amber/50 px-2 py-1 text-ink" onClick={onRetry}>
           Retry link
         </button>

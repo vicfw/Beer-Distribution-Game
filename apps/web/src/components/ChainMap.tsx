@@ -46,11 +46,7 @@ export function ChainMap({
                 ) : (
                   <p className="mt-4 font-mono text-3xl tabular text-ink">{active ? (inventory ?? 0) : '—'}</p>
                 )}
-                {seat ? (
-                  <p className={`mt-3 font-mono text-[10px] tracking-[0.16em] ${seat.submitted ? 'text-lime' : 'text-amber'}`}>
-                    {seat.submitted ? 'ORDER LOCKED' : seat.taken ? 'AWAITING' : 'OPEN'}
-                  </p>
-                ) : null}
+                {seat ? <SeatStatus seat={seat} finished={!redacted} /> : null}
                 {active && !hideNumbers && shipment !== undefined ? (
                   <p className="mt-1 font-mono text-[10px] tracking-[0.14em] text-cyan">INBOUND {shipment}</p>
                 ) : null}
@@ -70,6 +66,12 @@ function Rail({ active }: { active: boolean }) {
       <span className={`absolute -top-1 left-1 h-2 w-2 rounded-full ${active ? 'bg-cyan' : 'bg-line'}`} />
     </div>
   );
+}
+
+function SeatStatus({ seat, finished }: { seat: SeatPublic; finished: boolean }) {
+  const label = seat.submitted ? 'ORDER LOCKED' : !seat.taken ? 'OPEN' : finished ? 'COMPLETE' : 'AWAITING';
+  const tone = seat.submitted || finished ? 'text-lime' : 'text-amber';
+  return <p className={`mt-3 font-mono text-[10px] tracking-[0.16em] ${tone}`}>{label}</p>;
 }
 
 function Lamp({ on }: { on: boolean }) {

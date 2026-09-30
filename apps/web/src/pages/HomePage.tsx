@@ -34,9 +34,9 @@ export function HomePage() {
       </p>
       {health.isError ? (
         <p className="mt-4 font-mono text-xs tracking-[0.16em] text-alert">CONTROL LINK UNAVAILABLE</p>
-      ) : (
+      ) : health.isSuccess ? (
         <p className="mt-4 font-mono text-xs tracking-[0.16em] text-lime">CHANNEL OPEN</p>
-      )}
+      ) : null}
 
       <div className="mt-10 grid gap-6 lg:grid-cols-[1.35fr_0.8fr]">
         <HudFrame label="INITIALIZE SIMULATION">
@@ -92,6 +92,10 @@ export function HomePage() {
               const rounds = Number(roundCount);
               if ([holding, backlog, delay, inventory, initial, rounds].some((value) => Number.isNaN(value))) {
                 setFormError('Standing orders must be numbers.');
+                return;
+              }
+              if (![delay, inventory, initial, rounds].every(Number.isInteger)) {
+                setFormError('Delay, inventory, backlog, and rounds must be whole numbers.');
                 return;
               }
               create.mutate({

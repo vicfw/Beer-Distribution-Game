@@ -21,9 +21,12 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     },
   });
   const text = await response.text();
-  const body = text ? (JSON.parse(text) as { error?: { code?: string; message?: string } }) : null;
+  const body = parseBody(text);
   if (!response.ok) {
     throw new ApiError(body?.error?.message ?? 'Request failed', body?.error?.code ?? 'INTERNAL', response.status);
+  }
+  if (text && !body) {
+    throw new ApiError('The server returned an unreadable response', 'INTERNAL', response.status);
   }
   return body as T;
 }
@@ -46,4 +49,13 @@ export function fetchHistory(code: string): Promise<Debrief> {
 
 export function fetchHealth(): Promise<{ status: string }> {
   return api('/health');
+}
+
+function parseBody(text: string): { error?: { code?: string; message?: string } } | null {
+  if (!text) return null;
+  try {
+    return JSON.parse(text) as { error?: { code?: string; message?: string } };
+  } catch {
+    return null;
+  }
 }

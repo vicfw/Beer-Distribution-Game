@@ -9,7 +9,3 @@ export class DomainError extends Error {
     this.code = code;
   }
 }
-
-export function isDomainError(error: unknown): error is DomainError {
-  return error instanceof DomainError;
-}

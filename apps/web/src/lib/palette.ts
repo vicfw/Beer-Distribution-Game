@@ -6,5 +6,3 @@ export const ROLE_COLOR: Record<Role, string> = {
   distributor: '#ffb020',
   factory: '#ff5d73',
 };
-
-export const CHAIN = ['customer', 'retailer', 'wholesaler', 'distributor', 'factory', 'supplier'] as const;

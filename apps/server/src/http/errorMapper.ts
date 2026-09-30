@@ -18,12 +18,8 @@ const STATUS: Record<ErrorCode, 400 | 403 | 404 | 409 | 422 | 500> = {
   INTERNAL: 500,
 };
 
-export function errorBody(code: ErrorCode, message: string) {
+function errorBody(code: ErrorCode, message: string) {
   return { error: { code, message } };
-}
-
-export function errorStatus(code: ErrorCode): number {
-  return STATUS[code];
 }
 
 export function httpError(error: unknown, c: Context, log: (error: unknown) => void) {

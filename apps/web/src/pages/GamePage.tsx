@@ -23,6 +23,10 @@ export function GamePage() {
     setQuantity(station.lastOrder);
   }, [session.player?.round, station?.submitted, station?.lastOrder]);
 
+  useEffect(() => {
+    if (station?.submitted) setError(null);
+  }, [station?.submitted]);
+
   if (!seat) return <Navigate to={`/game/${code}/lobby`} replace />;
   if (session.player?.status === 'lobby') return <Navigate to={`/game/${code}/lobby`} replace />;
 
@@ -46,7 +50,9 @@ export function GamePage() {
             </h1>
           </div>
           <div className="flex items-center gap-4">
-            <span className="font-mono text-[11px] tracking-[0.18em] text-lime">{session.link === 'live' ? 'LINK LIVE' : session.link.toUpperCase()}</span>
+            <span className={`font-mono text-[11px] tracking-[0.18em] ${session.link === 'live' ? 'text-lime' : 'text-amber'}`}>
+              {session.link === 'live' ? 'LINK LIVE' : session.link.toUpperCase()}
+            </span>
             {session.player?.status === 'finished' ? <AppLink to={`/game/${code}/results`}>OPEN DEBRIEF</AppLink> : null}
           </div>
         </div>
@@ -101,7 +107,7 @@ export function GamePage() {
             {session.player.history.length > 0 ? (
               <div className="mt-6">
                 <p className="font-mono text-[11px] tracking-[0.2em] text-muted">YOUR TRACE</p>
-                <Sparkline values={session.player.history.map((round) => round.inventory)} />
+                <Sparkline values={session.player.history.map((entry) => entry.inventory)} />
               </div>
             ) : null}
           </>

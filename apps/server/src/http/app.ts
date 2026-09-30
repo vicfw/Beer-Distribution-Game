@@ -97,15 +97,10 @@ export function createApp(deps: HttpDeps) {
     return c.json({ left: true });
   });
 
-  app.get('/api/games/:code/results', (c) => {
-    const code = parseCode(c.req.param('code'));
-    return c.json(getDebrief(deps, code));
-  });
-
-  app.get('/api/games/:code/history', (c) => {
-    const code = parseCode(c.req.param('code'));
-    return c.json(getDebrief(deps, code));
-  });
+  const sendDebrief = (c: { req: { param: (name: string) => string }; json: (body: unknown) => Response }) =>
+    c.json(getDebrief(deps, parseCode(c.req.param('code'))));
+  app.get('/api/games/:code/results', sendDebrief);
+  app.get('/api/games/:code/history', sendDebrief);
 
   app.notFound((c) => c.json({ error: { code: 'GAME_NOT_FOUND', message: 'Not found' } }, 404));
 

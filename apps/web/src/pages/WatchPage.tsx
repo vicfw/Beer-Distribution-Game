@@ -1,4 +1,4 @@
-import { ROLE_LABEL, ROLES } from '@beer-game/shared';
+import { ROLE_LABEL, ROLES, type Debrief } from '@beer-game/shared';
 import { useParams } from 'react-router';
 import { AppLink } from '../components/AppLink';
 import { ChainMap } from '../components/ChainMap';
@@ -35,20 +35,24 @@ export function WatchPage() {
           <div className="mt-4">
             <ChainMap seats={snapshot.seats} redacted={snapshot.status !== 'finished'} />
           </div>
-          {snapshot.debrief ? (
-            <HudFrame label="UNSEALED COSTS" className="mt-6">
-              <p className="font-mono text-4xl tabular text-cyan">{formatCost(snapshot.debrief.totalCostCents)}</p>
-              <div className="mt-4 grid gap-2 sm:grid-cols-4">
-                {ROLES.map((role) => (
-                  <p key={role} className="font-mono text-sm" style={{ color: ROLE_COLOR[role] }}>
-                    {ROLE_LABEL[role]} {formatCost(snapshot.debrief?.costs[role] ?? 0)}
-                  </p>
-                ))}
-              </div>
-            </HudFrame>
-          ) : null}
+          {snapshot.debrief ? <CostSummary debrief={snapshot.debrief} /> : null}
         </>
       ) : null}
     </Shell>
+  );
+}
+
+function CostSummary({ debrief }: { debrief: Debrief }) {
+  return (
+    <HudFrame label="UNSEALED COSTS" className="mt-6">
+      <p className="font-mono text-4xl tabular text-cyan">{formatCost(debrief.totalCostCents)}</p>
+      <div className="mt-4 grid gap-2 sm:grid-cols-4">
+        {ROLES.map((role) => (
+          <p key={role} className="font-mono text-sm" style={{ color: ROLE_COLOR[role] }}>
+            {ROLE_LABEL[role]} {formatCost(debrief.costs[role])}
+          </p>
+        ))}
+      </div>
+    </HudFrame>
   );
 }
