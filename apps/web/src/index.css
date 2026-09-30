@@ -1,1 +1,118 @@
 @import 'tailwindcss';
+
+@theme {
+  --font-sans: 'Space Grotesk', ui-sans-serif, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --color-void: #07090d;
+  --color-panel: #0d141c;
+  --color-panel-2: #121b26;
+  --color-line: #1e3142;
+  --color-ink: #d7e4ee;
+  --color-muted: #7f93a6;
+  --color-cyan: #3ee0ff;
+  --color-lime: #c6f54e;
+  --color-amber: #ffb020;
+  --color-alert: #ff5d73;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-void);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+body::before {
+  content: '';
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(62, 224, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(62, 224, 255, 0.045) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(circle at 50% 20%, black, transparent 78%);
+}
+
+body::after {
+  content: '';
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 2px,
+    rgba(0, 0, 0, 0.14) 3px
+  );
+  opacity: 0.35;
+  animation: drift 9s linear infinite;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button:focus-visible,
+input:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--color-cyan);
+  outline-offset: 2px;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.classified {
+  height: 1.4rem;
+  background: repeating-linear-gradient(
+    90deg,
+    transparent 0 8px,
+    rgba(62, 224, 255, 0.28) 8px 12px
+  );
+  animation: sweep 1.8s linear infinite;
+}
+
+@keyframes sweep {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 40px 0;
+  }
+}
+
+@keyframes drift {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(4px);
+  }
+}
+
+@keyframes packet {
+  from {
+    offset-distance: 0%;
+  }
+  to {
+    offset-distance: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body::after,
+  .classified {
+    animation: none;
+  }
+}
